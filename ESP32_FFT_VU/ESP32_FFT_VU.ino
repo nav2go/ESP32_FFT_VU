@@ -27,7 +27,7 @@ const uint8_t kMatrixHeight = 8;                         // Matrix height
 #define NUM_LEDS       (kMatrixWidth * kMatrixHeight)     // Total number of LEDs
 #define BAR_WIDTH      (kMatrixWidth  / (NUM_BANDS - 1))  // If width >= 8 light 1 LED width per bar, >= 16 light 2 LEDs width bar etc
 #define  TOP            (kMatrixHeight - 0)                // Don't allow the bars to go offscreen
-#define SERPENTINE     true                              // Set to false if you're LEDS are connected end to end, true if serpentine
+#define SERPENTINE     false                              // Set to false if you're LEDS are connected end to end, true if serpentine
 // Sampling and FFT stuff
 unsigned int sampling_period_us;
 byte peak[] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};              // The length of these arrays must be >= NUM_BANDS
@@ -69,6 +69,10 @@ CRGBPalette16 outrunPal = outrun_gp;
 CRGBPalette16 greenbluePal = greenblue_gp;
 CRGBPalette16 heatPal = redyellow_gp;
 uint8_t colorTimer = 0;
+uint8_t FPS = 0;
+long now = 0;
+long past = 0;
+
 
 // FastLED_NeoMaxtrix - see https://github.com/marcmerlin/FastLED_NeoMatrix for Tiled Matrixes, Zig-Zag and so forth
 FastLED_NeoMatrix *matrix = new FastLED_NeoMatrix(leds, kMatrixWidth, kMatrixHeight,
@@ -257,6 +261,14 @@ void loop() {
   }
 
   FastLED.show();
+
+  now= millis();
+  FPS += 1;
+  if (now - past > 1000){
+      Serial.println(FPS);
+      past = now;
+      FPS = 0;
+  }
 }
 
 // PATTERNS BELOW //
@@ -318,7 +330,7 @@ void outrunPeak(int band) {
 
 void waterfall(int band) {
   int xStart = BAR_WIDTH * band;
-  double highestBandValue = 20000;        // Set this to calibrate your waterfall
+  double highestBandValue = 60000;        // Set this to calibrate your waterfall
 
   // Draw bottom line
   for (int x = xStart; x < xStart + BAR_WIDTH; x++) {
