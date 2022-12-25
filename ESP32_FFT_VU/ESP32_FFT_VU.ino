@@ -1,3 +1,5 @@
+// adapetd for ESP8266 and 8x8 WS2812B LED Matrix PCB
+
 // (Heavily) adapted from https://github.com/G6EJD/ESP32-8266-Audio-Spectrum-Display/blob/master/ESP32_Spectrum_Display_02.ino
 // Adjusted to allow brightness changes on press+hold, Auto-cycle for 3 button presses within 2 seconds
 // Edited to add Neomatrix support for easier compatibility with different layouts.
@@ -6,27 +8,26 @@
 #include <arduinoFFT.h>
 #include <EasyButton.h>
 
-#define SAMPLES         1024          // Must be a power of 2
-#define SAMPLING_FREQ   40000         // Hz, must be 40000 or less due to ADC conversion time. Determines maximum frequency that can be analysed by the FFT Fmax=sampleF/2.
-#define AMPLITUDE       1000          // Depending on your audio source level, you may need to alter this value. Can be used as a 'sensitivity' control.
-#define AUDIO_IN_PIN    35            // Signal in on this pin
-#define LED_PIN         5             // LED strip data
-#define BTN_PIN         4             // Connect a push button to this pin to change patterns
+#define SAMPLES         512           // Must be a power of 2
+#define SAMPLING_FREQ   20000         // Hz, must be 40000 or less due to ADC conversion time. Determines maximum frequency that can be analysed by the FFT Fmax=sampleF/2.
+#define AMPLITUDE       2000           // lower = more sensitive. Depending on your audio source level, you may need to alter this value. Can be used as a 'sensitivity' control.
+#define AUDIO_IN_PIN    A0            // Signal in on this pin
+#define LED_PIN         2             // LED strip data
+#define BTN_PIN         5             // Connect a push button to this pin to change patterns
 #define LONG_PRESS_MS   200           // Number of ms to count as a long press
 #define COLOR_ORDER     GRB           // If colours look wrong, play with this
-#define CHIPSET         WS2812B       // LED strip type
+#define CHIPSET         WS2812B       // LED strip type WS2812B
 #define MAX_MILLIAMPS   2000          // Careful with the amount of power here if running off USB port
 const int BRIGHTNESS_SETTINGS[3] = {5, 70, 200};  // 3 Integer array for 3 brightness settings (based on pressing+holding BTN_PIN)
 #define LED_VOLTS       5             // Usually 5 or 12
-#define NUM_BANDS       16            // To change this, you will need to change the bunch of if statements describing the mapping from bins to bands
-#define NOISE           500           // Used as a crude noise filter, values below this are ignored
-const uint8_t kMatrixWidth = 16;                          // Matrix width
-const uint8_t kMatrixHeight = 16;                         // Matrix height
+#define NUM_BANDS       8           // To change this, you will need to change the bunch of if statements describing the mapping from bins to bands
+#define NOISE           500          // Used as a crude noise filter, values below this are ignored
+const uint8_t kMatrixWidth = 8;                          // Matrix width
+const uint8_t kMatrixHeight = 8;                         // Matrix height
 #define NUM_LEDS       (kMatrixWidth * kMatrixHeight)     // Total number of LEDs
 #define BAR_WIDTH      (kMatrixWidth  / (NUM_BANDS - 1))  // If width >= 8 light 1 LED width per bar, >= 16 light 2 LEDs width bar etc
-#define TOP            (kMatrixHeight - 0)                // Don't allow the bars to go offscreen
-#define SERPENTINE     true                               // Set to false if you're LEDS are connected end to end, true if serpentine
-
+#define  TOP            (kMatrixHeight - 0)                // Don't allow the bars to go offscreen
+#define SERPENTINE     true                              // Set to false if you're LEDS are connected end to end, true if serpentine
 // Sampling and FFT stuff
 unsigned int sampling_period_us;
 byte peak[] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};              // The length of these arrays must be >= NUM_BANDS
@@ -72,7 +73,7 @@ uint8_t colorTimer = 0;
 // FastLED_NeoMaxtrix - see https://github.com/marcmerlin/FastLED_NeoMatrix for Tiled Matrixes, Zig-Zag and so forth
 FastLED_NeoMatrix *matrix = new FastLED_NeoMatrix(leds, kMatrixWidth, kMatrixHeight,
   NEO_MATRIX_TOP        + NEO_MATRIX_LEFT +
-  NEO_MATRIX_ROWS       + NEO_MATRIX_ZIGZAG +
+  NEO_MATRIX_ROWS       + NEO_MATRIX_PROGRESSIVE  + // NEO_MATRIX_ZIGZAG NEO_MATRIX_PROGRESSIVE 
   NEO_TILE_TOP + NEO_TILE_LEFT + NEO_TILE_ROWS);
 
 void setup() {
@@ -114,6 +115,8 @@ void brightnessOff(){
 
 void loop() {
 
+   autoChangePatterns = true;
+
   // Don't clear screen if waterfall pattern, be sure to change this is you change the patterns / order
   if (buttonPushCounter != 5) FastLED.clear();
 
@@ -142,16 +145,16 @@ void loop() {
   for (int i = 2; i < (SAMPLES/2); i++){       // Don't use sample 0 and only first SAMPLES/2 are usable. Each array element represents a frequency bin and its value the amplitude.
     if (vReal[i] > NOISE) {                    // Add a crude noise filter
 
-    /*8 bands, 12kHz top band
-      if (i<=3 )           bandValues[0]  += (int)vReal[i];
+  //8 bands, 12kHz top band
+      if (i<=3 )           bandValues[0]  += (int)vReal[i]*8;
       if (i>3   && i<=6  ) bandValues[1]  += (int)vReal[i];
       if (i>6   && i<=13 ) bandValues[2]  += (int)vReal[i];
-      if (i>13  && i<=27 ) bandValues[3]  += (int)vReal[i];
-      if (i>27  && i<=55 ) bandValues[4]  += (int)vReal[i];
+      if (i>13  && i<=27 ) bandValues[3]  += (int)vReal[i]*4;
+      if (i>27  && i<=55 ) bandValues[4]  += (int)vReal[i]*4;
       if (i>55  && i<=112) bandValues[5]  += (int)vReal[i];
       if (i>112 && i<=229) bandValues[6]  += (int)vReal[i];
-      if (i>229          ) bandValues[7]  += (int)vReal[i];*/
-
+      if (i>229          ) bandValues[7]  += (int)vReal[i]*32;
+/*
     //16 bands, 12kHz top band
       if (i<=2 )           bandValues[0]  += (int)vReal[i];
       if (i>2   && i<=3  ) bandValues[1]  += (int)vReal[i];
@@ -168,7 +171,9 @@ void loop() {
       if (i>97  && i<=135) bandValues[12] += (int)vReal[i];
       if (i>135 && i<=189) bandValues[13] += (int)vReal[i];
       if (i>189 && i<=264) bandValues[14] += (int)vReal[i];
-      if (i>264          ) bandValues[15] += (int)vReal[i];
+      if (i>264          ) bandValues[15] += (int)vReal[i];*/
+
+      
     }
   }
 
@@ -313,7 +318,7 @@ void outrunPeak(int band) {
 
 void waterfall(int band) {
   int xStart = BAR_WIDTH * band;
-  double highestBandValue = 60000;        // Set this to calibrate your waterfall
+  double highestBandValue = 20000;        // Set this to calibrate your waterfall
 
   // Draw bottom line
   for (int x = xStart; x < xStart + BAR_WIDTH; x++) {
